@@ -31,16 +31,26 @@ natl_coastline <- natl_coastline %>%
   group_by( featurecla) %>%  
   summarise(Project = unique(featurecla), do_union = TRUE)
 
-euc_dist_along_shelf_sub_con1 <- st_centroid(st_as_sf(rasterToContour(euc_dist_along_shelf_sub, levels= group_allprey_dch$wt_mean[group_allprey_dch$group == "Meso_pelagic" & group_allprey_dch$year >= 1980])))
-euc_dist_along_shelf_sub_con1$yr <- 1980:2019
+# euc_dist_along_shelf_sub_con1 <- st_centroid(st_as_sf(rasterToContour(euc_dist_along_shelf_sub, levels= group_allprey_dch$wt_mean[group_allprey_dch$group == "Meso_pelagic" & group_allprey_dch$year >= 1980])))
+# euc_dist_along_shelf_sub_con1$yr <- 1980:2019
+# 
+# euc_dist_along_shelf_sub_con2 <- (st_as_sf(rasterToContour(euc_dist_along_shelf_sub, levels= group_allprey_dch$wt_mean[group_allprey_dch$group == "LONGFIN SQUID"])))
+# euc_dist_along_shelf_sub_con2$yr <- 1977:2018
 
-euc_dist_along_shelf_sub_con2 <- (st_as_sf(rasterToContour(euc_dist_along_shelf_sub, levels= group_allprey_dch$wt_mean[group_allprey_dch$group == "LONGFIN SQUID"])))
-euc_dist_along_shelf_sub_con2$yr <- 1977:2018
-
-strat_all_simple <- strat_all_sf %>%
-  group_by(region) %>%
+setwd("~/Dropbox/NMFS data/shapefiles/")
+strat <- st_read(".", "BTS_strata")
+strat_reg <- strat[strat$STRATA %in% allstrat,]
+st_crs(strat_reg) <- st_crs(4326)
+strat_reg$stratcat <- ifelse(strat_reg$STRATA %in% GOMstrat, "GOMstrat", NA)
+strat_reg$stratcat <- ifelse(strat_reg$STRATA %in% SNEstrat, "SNEstrat", strat_reg$stratcat)
+strat_reg$stratcat <- ifelse(strat_reg$STRATA %in% GBstrat, "GBstrat", strat_reg$stratcat)
+strat_reg$stratcat <- ifelse(strat_reg$STRATA %in% MABstrat, "MABstrat", strat_reg$stratcat)
+strat_all_simple <- strat_reg %>%
+  group_by(stratcat) %>%
   summarize(geometry = st_union(geometry)) 
 
+
+####### FIGURE 2A #######
 setwd( "/Users/jstepanuk/Dropbox/my_papers/InPrep_Stepanuketal_GOMprey")
 pdf("latshift_map_20220727.pdf", width=6, height = 6)
 ggplot(data=natl_coastline) +
@@ -91,9 +101,11 @@ ggplot(group_trends, aes(x=group_multi, y=wt_meankm)) +
                arrow = arrow(length = unit(0.2, "cm")), size=2) +
   scale_color_viridis_c()
 
+
+### FIGURE 2B #####
 setwd( "/Users/jstepanuk/Dropbox/my_papers/InPrep_Stepanuketal_GOMprey")
 pdf("latshift_plot_20220727.pdf", width=6, height = 5)
-ggplot(group_allprey_dch, aes(x=group_multi, y=wt_mean / 1000)) +
+ggplot(group_allprey_dch[group_allprey_dch$year > 1979,], aes(x=group_multi, y=wt_mean / 1000)) +
   geom_point(data=group_allprey_dch, aes(x=group_multi, y=wt_mean / 1000, color=year), pch=95, size=8) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle=90),
@@ -109,4 +121,73 @@ ggplot(group_allprey_dch, aes(x=group_multi, y=wt_mean / 1000)) +
   scale_color_viridis_c() +
   labs(color="Year", x="", y="Distance from Cape Hatteras (km)") +
   scale_y_continuous(breaks=seq(0,1300,100))
+dev.off()
+
+
+### FIGURE 3 ####
+#  ggplot for stacked bars
+coll <- c("#e3657b", "#ff8b63", "#ffb165", "#eed948", "#74a76a", "#3a613c", "#6bd3aa", "#4b8497", "#bdcaf6", "#9a68af")
+
+setwd("/Users/jstepanuk/Dropbox/my_papers/InPrep_Stepanuketal_GOMprey")
+pdf("bts_biomass_groups_scaledtotal_20220723.pdf", width=8, height=6)
+t_region %>% filter(!is.na(group)) %>%
+  group_by(stratcat,YEAR) %>%
+  mutate(freq = strat.biomass / sum(strat.biomass)) %>% 
+  ggplot(aes(fill=factor(group), y=strat.biomass, x=YEAR)) + 
+  geom_bar(position="stack", stat="identity") +
+  facet_wrap(.~factor(stratcat, levels=c("GOMstrat", "GBstrat", "SNEstrat", "MABstrat"), labels = c("Gulf of Maine", "George's Bank", "Southern New England", "Mid-Atlantic Bight"))) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+        text=element_text(size=16)) +
+  scale_fill_manual(values=coll) +
+  #scale_fill_manual(values=c("goldenrod", "darkgreen")) +
+  ggtitle("Prey Group Relative Proportion - BTS") +
+  labs(x="Year", y="Biomass", fill = "")
+dev.off()
+
+#### FIGURE 4 ####
+zpd_out <- NULL
+for(i in unique(zpd_region$group_multi)){
+  pp <- zpd_region[zpd_region$group_multi == i,]
+  for(j in unique(zpd_region$stratcat)){
+    ppp <- pp[pp$stratcat == j,]
+    meanbiom <- mean(ppp$strat.biomass, na.rm = T)
+    sdbiom <- sd(ppp$strat.biomass, na.rm=T)
+    
+    ppp$std_ano <- (ppp$strat.biomass - meanbiom) / sdbiom
+    
+    zpd_out <- rbind(zpd_out, ppp)
+  }
+}
+
+zpd_out$group_multi <- factor(zpd_out$group_multi, levels = c("euphausiid", "lg_zoop", "sm_zoop", "shrimp"), labels = c("Euphausiid*", "Large Zooplankton*", "Small Zooplankton", "Shrimp"))
+zpd_out$stratcat <- factor(zpd_out$stratcat, levels=c("GOMstrat", "GBstrat", "SNEstrat", "MABstrat"), labels = c("Gulf of Maine", "George's Bank", "Southern New\nEngland", "Mid-Atlantic\nBight"))
+
+
+setwd("/Users/jstepanuk/Dropbox/my_papers/InPrep_Stepanuketal_GOMprey")
+pdf("zoop_prey_nogroup_20240414.pdf", width=8, height=6)
+zpd_out %>%
+  filter(group_multi != "") %>%
+  ggplot(aes(fill=group_multi, y=std_ano, x=YEAR)) + 
+  geom_bar(position="dodge", stat="identity") +
+  facet_grid(stratcat~group_multi) +
+  labs(x="Year", y="Std. Anomaly", fill = "") +
+  theme_minimal() +
+  scale_fill_manual(values= c("#0A81D1", "#2F0147", "#A3CCA6", "#DB504A")) +
+  theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+        text=element_text(size=14),
+        legend.position = "none") 
+dev.off()
+
+#### FIGURE 5 ####
+setwd("/Users/jstepanuk/Dropbox/my_papers/InPrep_Stepanuketal_GOMprey")
+pdf("bts_prey_grouped_20220723.pdf", width=8, height=6)
+ggplot(t_region2, aes(x=YEAR, y=value, group=variable, fill=variable)) + 
+  geom_bar(stat="identity", position="dodge", color="black", size=0.3) + 
+  facet_wrap(.~factor(stratcat, levels=c("GOMstrat", "GBstrat", "SNEstrat", "MABstrat"), labels = c("Gulf of Maine", "George's Bank", "Southern New England", "Mid-Atlantic Bight"))) +
+  labs(x="Year", y="Biomass", fill = "") +
+  scale_fill_manual(values=c("#E69F00", "#009E73", "#0072B2", "#F0E442")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+        text=element_text(size=16)) 
 dev.off()
