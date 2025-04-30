@@ -8,6 +8,7 @@ library(ecodata)
 library(survdat)
 library(data.table)
 
+## Assign prey groupings based on species codes
 survdat_fall$group <- ifelse(survdat_fall$SVSPP %in% c(32, 851, 205, 859, 427, 430, 30, 31, 44),  "Clupeid", NA)
 survdat_fall$group <- ifelse(survdat_fall$SVSPP %in% c(121, 578, 572, 209, 124, 898, 570, 702, 571, 582, 744, 860, 208, 212, 211, 874, 822, 745, 577, 877), "Scombrid", survdat_fall$group)
 survdat_fall$group <- ifelse(survdat_fall$SVSPP %in% c(181, 734, 38), "Sandlance", survdat_fall$group)
@@ -21,7 +22,7 @@ survdat_fall$group <- ifelse(survdat_fall$SVSPP %in% c(81, 454, 80, 86, 79, 69, 
 survdat_fall$group <- ifelse(survdat_fall$SVSPP %in% c(51, 54, 56, 55, 229) , "Meso_pelagic", survdat_fall$group)
 survdat_fall$CATCHSEX <- 0
 
-#Calculate stratified mean for all regions combined, but then also do it by strata regions
+#Calculate stratified mean for all regions combined, but then also by strata regions
 t <- calc_stratified_mean(data.table(survdat_fall), areaDescription = "STRATA", groupDescription = "group", filterBySeason = "FALL")
 t_gom <- calc_stratified_mean(data.table(survdat_fall[survdat_fall$stratcat == "GOMstrat",]), areaDescription = "STRATA", groupDescription = "group", filterBySeason = "FALL")
 t_gb <- calc_stratified_mean(data.table(survdat_fall[survdat_fall$stratcat == "GBstrat",]), areaDescription = "STRATA", groupDescription = "group", filterBySeason = "FALL")
@@ -34,14 +35,13 @@ t_gb$stratcat <- "GBstrat"
 t_sne$stratcat <- "SNEstrat"
 t_mab$stratcat <- "MABstrat"
 
-#Combine regions
+#Combine regions into one data frame
 t_region <- rbind(t_gom, t_gb)
 t_region <- rbind(t_region, t_sne)
 t_region <- rbind(t_region, t_mab)
 
-##### ALL BIOMASS PER REGION
+##### ALL BIOMASS PER REGION 
 #Calculate stratified mean for all regions combined, but then also do it by strata regions
-
 big_survdat_fall <- survdat_fall
 big_survdat_fall$isprey <- ifelse(!is.na(big_survdat_fall$group), "prey", "not_prey")
 big_survdat_fall <- big_survdat_fall[,!("group")]
@@ -86,8 +86,8 @@ corrtest_fishgroup_bio$sig <- ifelse(corrtest_fishgroup_bio$pval <= 0.0253, 1, 0
 
 
 ########## ECOMON ###########
-#### BRING IN ZOOPS ----------------------------
-#First have to munge all this together to match the bottom trawl data to apply the survdat functions to it
+#### BRING IN ZOOPLANKTON DATA ----------------------------
+#First have to modify the zooplankton column names to match the bottom trawl data to apply the survdat functions correctly. Survdat looks for certain fields (e.g., STRATUM, SEASON, CATCHSEX) that aren't in the zooplankton dataset
 ZPD_fall_sf$STRATUM <- ZPD_fall_sf$Name
 ZPD_fall_sf$SEASON <- "FALL"
 ZPD_fall_sf$STATION <- ZPD_fall_sf$station
@@ -124,7 +124,7 @@ zpd_region <- rbind(zpd_region, zpd_strat_mean_sne)
 zpd_region <- rbind(zpd_region, zpd_strat_mean_mab)
 
 
-#### BIG ECO
+#### ALL PREY COMBINED - for ecomon data
 bigzpd_sel <- zpd_sel
 bigzpd_sel$isgroup <- ifelse(!is.na(bigzpd_sel$group_multi), "group", "not")
 bigzpd_strat_mean_gom <- calc_stratified_mean(data.table(bigzpd_sel[bigzpd_sel$stratcat == "GOMstrat",]), areaDescription = "Name", groupDescription = "isgroup", filterBySeason = "FALL", areaPolygon = strat_zp)
@@ -169,7 +169,7 @@ corrtest_zoopgroup_bio$r2 <- as.numeric(corrtest_zoopgroup_bio$r2)
 corrtest_zoopgroup_bio$sig <- ifelse(corrtest_zoopgroup_bio$pval <= 0.0253, 1, 0) #is it sig @ 0.05?
 
 
-##### COMBINE #####
+##### COMBINE BTS AND ECOMON #####
 ## Combine for all regions
 zpd_strat_mean_sub <- zpd_strat_mean %>%
   filter(group_multi != "NA") %>%
@@ -225,8 +225,7 @@ survdat_fall$Bb_food <- ifelse(survdat_fall$group == "Shrimp_BT" | survdat_fall$
 
 survdat_fall$Ba_food <- ifelse(survdat_fall$group == "Shrimp_BT" | survdat_fall$group == "Northern_shrimp" |survdat_fall$group == "Sandlance" | survdat_fall$group == "Large_Gadid"| survdat_fall$group == "shrimp" | survdat_fall$group == "Clupeid", "Ba_food", NA)
 
-##### eco
-
+##### ecomon groupings
 survdat_fall$Bp_food <- ifelse(survdat_fall$group == "euphausiid" | survdat_fall$group == "lg_zoop" | survdat_fall$group == "sm_zoop" | survdat_fall$group == "shrimp" | survdat_fall$group == "fish" , "Bp_food", survdat_fall$Bp_food)
 
 survdat_fall$Mn_food <- ifelse( survdat_fall$group == "shrimp" , "Mn_food", survdat_fall$Mn_food)
@@ -235,6 +234,7 @@ survdat_fall$Bb_food <- ifelse(survdat_fall$group == "euphausiid" | survdat_fall
 
 survdat_fall$Ba_food <- ifelse( survdat_fall$group == "shrimp", "Ba_food", survdat_fall$Ba_food)
 
+## assess the BTS data for species that are in preferred prey groups for each large whale species. Remove the columns that are not relevant, or are not indicating prey items for the given species (e.g., remove Mn, Bb, and Ba food columns from the subset called Bp). Then, reassign the column name for the chosen species to just be called "food"
 survdat_fall_wh <- survdat_fall
 survdat_fall_wh_bp <- survdat_fall %>% 
   dplyr::select(-c("COMNAME", "ID", "Mn_food", "Bb_food", "Ba_food", "group")) #[,-c(24, 27, 28, 29)]
@@ -253,10 +253,12 @@ survdat_fall_wh_ba <- survdat_fall %>%
 survdat_fall_wh_ba$whales <- "Ba"
 colnames(survdat_fall_wh_ba)[colnames(survdat_fall_wh_ba) == "Ba_food"] <- "food"
 
+# bind all the above together so you end up with one large data frame that indicates whether a certain prey item is preferred by each large whale species
 survdat_fall_wh <- rbind(survdat_fall_wh_bp, survdat_fall_wh_ba)
 survdat_fall_wh <- rbind(survdat_fall_wh, survdat_fall_wh_bb)
 survdat_fall_wh <- rbind(survdat_fall_wh, survdat_fall_wh_mn)
 
+# Calculate stratified biomass overall, and for each region
 t_wh <- calc_stratified_mean(data.table(survdat_fall_wh), areaDescription = "STRATA", groupDescription = "food", filterBySeason = "FALL")
 t_wh_gom <- calc_stratified_mean(data.table(survdat_fall_wh[survdat_fall_wh$stratcat == "GOMstrat",]), areaDescription = "STRATA", groupDescription = "food", filterBySeason = "FALL")
 t_wh_gb <- calc_stratified_mean(data.table(survdat_fall_wh[survdat_fall_wh$stratcat == "GBstrat",]), areaDescription = "STRATA", groupDescription = "food", filterBySeason = "FALL")
@@ -286,7 +288,7 @@ colnames(zp_names) <- colnames(fish_names)
 critter_names <- data.frame(rbind(fish_names, zp_names))
 
 ### TABLE 4 ###
-#Now to calculate the lm results for each of these groupings
+#Now to calculate the lm results for each of the large whale prey groupings
 corrtest_whale_bio <- NULL
 for(i in unique(t_wh_region$stratcat)){
   w <- t_wh_region[t_wh_region$stratcat == i & t_wh_region$YEAR >= 1980 & t_wh_region$YEAR <= 2019,]
@@ -307,7 +309,7 @@ corrtest_whale_bio$slope <- as.numeric(corrtest_whale_bio$slope)
 corrtest_whale_bio$r2 <- as.numeric(corrtest_whale_bio$r2)
 corrtest_whale_bio$sig <- ifelse(corrtest_whale_bio$pval <= 0.013, 1, 0) #is it sig @ 0.05?
 
-### Do this in 5-year increments for Figure 5 ###
+### Do the same as above in 5-year increments for Figure 5 ###
 survdat_fall_clusteryear <- survdat_fall[survdat_fall$YEAR >= 1980,]
 survdat_fall_clusteryear$CATCHSEX <- 0
 survdat_fall_clusteryear$YEAR <- survdat_fall_clusteryear$yr5
